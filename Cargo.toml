@@ -8,4 +8,6 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.4.11", features = ["derive", "env"] }
 git2 = "0.18.1"
+run_script = "0.10.1"
 shellexpand = { version = "3.1.0", features = ["tilde"] }
+shellfn = "0.1.1"

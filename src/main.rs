@@ -1,8 +1,10 @@
 use std::path::Path;
 use std::process::{Command as ProcessCommand};
+use std::error::Error;
 
 use clap::{Args, Parser, Subcommand};
 use git2::{Cred, RemoteCallbacks};
+use shellfn::shell;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -38,6 +40,14 @@ enum Command {
     /// Generate a cd command to be executed in your shell
     Cd {
         repository: String,
+    },
+    /// Commit all modifications and push them to remote 
+    Sync {
+        repository: String,
+
+        /// Commit message 
+        #[arg(short, long, default_value = "commit")]
+        message: String,
     },
 }
 
@@ -114,5 +124,22 @@ fn main() {
                 .output()
                 .expect("failed to change directory");
         },
+        Command::Sync { repository, message } => {
+            let command = format!("cd {}/{} && git add . && git commit -m '{}' && git push", arguments.global.directory, repository, message);
+
+            let (code, output, error) = run_script::run_script!(command).unwrap();
+            if code != 0 {
+                println!("Error: {}", error);
+            } 
+            println!("Output: {}", output);
+        },
     }
 }
+
+#[shell]
+fn commit(directory: &str, repository: &str, message: &str) -> Result<impl Iterator<Item=String>, Box<dyn Error>> { r#"
+    cd $DIRECTORY/$REPOSITORY
+    git add .
+    git commit -m $MESSAGE
+    git push
+"# }
