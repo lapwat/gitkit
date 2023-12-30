@@ -1,4 +1,3 @@
-use std::process::{Command as ProcessCommand};
 
 use clap::{Args, Parser, Subcommand};
 
@@ -37,9 +36,13 @@ enum Command {
     Test {
         repository: String,
     },
-    /// Generate a cd command to be executed in your shell
+    /// Print the path to git repository
     Cd {
         repository: String,
+
+        /// If the git repository is a test repository 
+        #[clap(long, short, action)]
+        test: bool,
     },
     /// Commit all modifications and push them to remote 
     Sync {
@@ -109,14 +112,14 @@ fn main() {
                 println!("Output: {}", output);
             }
         },
-        Command::Cd { repository } => {
-            let command = format!("cd {}/{}", arguments.global.directory, repository);
-            println!("{}", command);
-
-            ProcessCommand::new("sh")
-                .arg(command)
-                .output()
-                .expect("failed to change directory");
+        Command::Cd { repository, test } => {
+            let directory;
+            if test {
+                directory = format!("{}/{}", arguments.global.tests_directory, repository);
+            } else {
+                directory = format!("{}/{}", arguments.global.directory, repository);
+            }
+            println!("{}", directory);
         },
         Command::Sync { repository, message } => {
             let command = format!("cd {}/{} && git add . && git commit -m '{}' && git push", arguments.global.directory, repository, message);
