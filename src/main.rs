@@ -1,10 +1,6 @@
-use std::path::Path;
 use std::process::{Command as ProcessCommand};
-use std::error::Error;
 
 use clap::{Args, Parser, Subcommand};
-use git2::{Cred, RemoteCallbacks};
-use shellfn::shell;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -23,18 +19,22 @@ struct Global {
     user: String,
 
     /// Directory where your repositories are stored
-    #[arg(short, long, env, default_value = "~/gitkit")]
+    #[arg(short, long, env, default_value = "~/projects")]
     directory: String,
 
-    /// SSH key used to clone repositories 
-    #[arg(short, long, env, default_value = "~/.ssh/id_ed25519")]
-    ssh_key: String,
+    /// Directory where your test repositories are stored
+    #[arg(short, long, env, default_value = "~/tests")]
+    tests_directory: String,
 }
 
 #[derive(Subcommand)]
 enum Command {
     /// Clone a git repository
     Add {
+        repository: String,
+    },
+    /// Clone a git test repository
+    Test {
         repository: String,
     },
     /// Generate a cd command to be executed in your shell
@@ -54,9 +54,9 @@ enum Command {
 fn main() {
     let mut arguments = Arguments::parse();
 
-    // expand ~ in arguments 
+    // expand ~ in arguments
     arguments.global.directory = shellexpand::tilde(&arguments.global.directory).to_string();
-    arguments.global.ssh_key = shellexpand::tilde(&arguments.global.ssh_key).to_string();
+    arguments.global.tests_directory = shellexpand::tilde(&arguments.global.tests_directory).to_string();
    
     match arguments.command {
         Command::Add { repository } => {
@@ -74,45 +74,39 @@ fn main() {
                  url = format!("git@github.com:{}", url);
             }
 
-            let clone_directory = format!("{}/{}", arguments.global.directory, repository);
+            let command = format!("mkdir -p {} && cd {} && git clone {}", arguments.global.directory, arguments.global.directory, url);
 
-            // HTTP
-            // if !url.contains("http://") && !url.contains("https://") {
-            //     url = format!("https://github.com/{}", url);
-            // }
-            // let repo = match Repository::clone(&url, clone_directory) {
-            //     Ok(repo) => repo,
-            //     Err(e) => panic!("failed to clone: {}", e),
-            // };
+            let (code, output, error) = run_script::run_script!(command).unwrap();
+            if code != 0 {
+                println!("Error: {}", error);
+            } 
+            if !output.is_empty() {
+                println!("Output: {}", output);
+            }
+        },
+        Command::Test { repository } => {
+            let mut url = repository.clone();
 
-            println!("cloning... {} -> {}", url, clone_directory);
+            // prepend username to repo if needed  
+            if !url.contains("/") {
+                url = format!("{}/{}", arguments.global.user, url);
+            }
 
-            // prepare callbacks
-            let mut callbacks = RemoteCallbacks::new();
-            callbacks.credentials(|_url, username_from_url, _allowed_types| {
-                Cred::ssh_key(
-                    username_from_url.unwrap(),
-                    None,
-                    Path::new(&arguments.global.ssh_key),
-                    None,
-                )
-            });
+            // prepend domain to repo if needed  
 
-            // prepare fetch options
-            let mut fo = git2::FetchOptions::new();
-            fo.remote_callbacks(callbacks);
+            // SSH
+            if !url.contains("git@") {
+                 url = format!("git@github.com:{}", url);
+            }
 
-            // prepare builder
-            let mut builder = git2::build::RepoBuilder::new();
-            builder.fetch_options(fo);
+            let command = format!("mkdir -p {} && cd {} && git clone {}", arguments.global.tests_directory, arguments.global.tests_directory, url);
 
-            // clone the project
-            match builder.clone(
-              &url,
-              Path::new(&clone_directory),
-            ) {
-                Ok(_) => println!("ok"),
-                Err(e) => panic!("{}", e),
+            let (code, output, error) = run_script::run_script!(command).unwrap();
+            if code != 0 {
+                println!("Error: {}", error);
+            }
+            if !output.is_empty() {
+                println!("Output: {}", output);
             }
         },
         Command::Cd { repository } => {
@@ -131,15 +125,9 @@ fn main() {
             if code != 0 {
                 println!("Error: {}", error);
             } 
-            println!("Output: {}", output);
+            if !output.is_empty() {
+                println!("Output: {}", output);
+            }
         },
     }
 }
-
-#[shell]
-fn commit(directory: &str, repository: &str, message: &str) -> Result<impl Iterator<Item=String>, Box<dyn Error>> { r#"
-    cd $DIRECTORY/$REPOSITORY
-    git add .
-    git commit -m $MESSAGE
-    git push
-"# }
